@@ -20,7 +20,7 @@ const emptyReport: Report = {
   date: new Date().toISOString().slice(0, 10),
   greeting: "Dear Mr. Heng,\n\nPlease find the below report.",
   accomplishments: "Meetings Attended:\nDaily Meeting with Engineers\nDaily Leadership Huddles\n\nAWWA School:\nAWWASchool-web\nSocial Work Module\nAdded: the following UI\nCase transfer details page - acknowledgements section\nChanged: case transfer service\nEnforce acknowledge case transfer api\nAdded: Case transfer enum\nCase transfer acknowledgement types\nChanged: case transfer status enum\nChanged: integrate the following\nAcknowledge Case Transfer API\nAdded: route config for case transfer details and form\n\nAWWASchool-api\nSocial Work Module\nAdded: process acknowledgement\nSet status based on acknowledgement types\nInclude status validation\nAdded: case transfer acknowledgement model\n\nDatabase:\nChanged: include 'is_acknowledge' field in 'case_transfer_acknowledgement' table",
-  overtime: "AWWA School\nAWWASchool-web\nAdded: cancel case transfer dialog UI\nChanged: integrate cancel transfer API\nEnforce: case transfer permissions\n\nAWWASchool-api\nAdded: cancel case transfer function\nAdded: cancel rules validation\nAdded: api route for cancel case transfer\nAdded: case transfer permissions\n\nDatabase:\nChanged: include 'cancel_reason' field in 'social_work_case_transfers' table",
+  overtime: "AWWA School:\nAWWASchool-web\nAdded: cancel case transfer dialog UI\nChanged: integrate cancel transfer API\nEnforce: case transfer permissions\n\nAWWASchool-api\nAdded: cancel case transfer function\nAdded: cancel rules validation\nAdded: api route for cancel case transfer\nAdded: case transfer permissions\n\nDatabase:\nChanged: include 'cancel_reason' field in 'social_work_case_transfers' table",
   overtimeTime: "6:00pm - 9:00pm",
   overtimeEnabled: false,
   blockers: "None.",
@@ -132,24 +132,44 @@ function buildActivityRows(value: string, maxHours?: number): ActivityRow[] {
   let project = "General";
   let meetings = false;
   let taskIndex = 0;
-  let usedHours = 0;
+  const taskRows: number[] = [];
   value.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
     if (line === "Meetings Attended:") { meetings = true; return; }
-    if (line === "AWWA School:" || line === "AWWA School") { meetings = false; project = "AWWA School"; return; }
-    if (line === "AWWASchool-web" || line === "AWWASchool-api" || line === "Database:") { project = line.replace(":", ""); return; }
+    if (isProjectRoot(line)) { meetings = false; project = line.replace(/:$/, ""); return; }
+    if (isSubProject(line) || line === "Database:") { project = line.replace(":", ""); return; }
     if (line === "Social Work Module") return;
     const isMeeting = meetings;
     if (isMeeting) rows.push({ project: "General", task: line, hours: "" });
     else {
-      const sampleHours = [0.5, 1, 1.5, 2][taskIndex % 4];
-      const remaining = maxHours === undefined ? sampleHours : Math.max(0, maxHours - usedHours);
-      const hours = remaining > 0 ? String(Math.min(sampleHours, remaining)) : "";
-      rows.push({ project, task: line, hours });
-      usedHours += Number(hours) || 0;
+      rows.push({ project, task: line, hours: "" });
+      taskRows.push(rows.length - 1);
       taskIndex += 1;
     }
   });
+  if (maxHours === undefined) {
+    taskRows.forEach((rowIndex, index) => { rows[rowIndex].hours = String([0.5, 1, 1.5, 2][index % 4]); });
+  } else {
+    distributeHours(taskRows.length, maxHours).forEach((hours, index) => { rows[taskRows[index]].hours = hours ? String(hours) : ""; });
+  }
   return rows;
+}
+
+function distributeHours(count: number, total: number) {
+  if (!count) return [];
+  const totalUnits = Math.round(total * 2);
+  const activeCount = Math.min(count, totalUnits);
+  const hours = Array.from({ length: count }, () => 0);
+  for (let index = 0; index < activeCount; index += 1) hours[index] = 1;
+  let remainingUnits = totalUnits - activeCount;
+  let seed = count * 97 + totalUnits * 13;
+  for (let index = 0; index < activeCount - 1; index += 1) {
+    seed = (seed * 9301 + 49297) % 233280;
+    const extraUnits = index === activeCount - 2 ? remainingUnits : Math.floor((seed / 233280) * (remainingUnits + 1));
+    hours[index] += extraUnits;
+    remainingUnits -= extraUnits;
+  }
+  if (activeCount) hours[activeCount - 1] += remainingUnits;
+  return hours.map((units) => units / 2);
 }
 
 function buildActivityText(rows: ActivityRow[], date: string) {
@@ -181,7 +201,7 @@ function buildReportNodes(title: string, value: string) {
   const stack: ReportNode[] = [];
   let meetingsMode = title === "Accomplished";
   rows.forEach((text) => {
-    if (isProjectRoot(text) || text === "AWWA School") meetingsMode = false;
+    if (isProjectRoot(text)) meetingsMode = false;
     const level = meetingsMode && text !== "Meetings Attended:" ? 1 : reportLevel(text, title, stack.at(-1)?.text);
     const node: ReportNode = { text, level, children: [] };
     while (stack.length && stack.at(-1)!.level >= level) stack.pop();
@@ -236,23 +256,18 @@ function toRoman(value: number) {
 
 function reportLevel(text: string, title: string, parent?: string) {
   const isOvertime = title.startsWith("Accomplished - OT");
-  if (text === "AWWA School") return 0;
   if (isProjectRoot(text)) return 0;
   if (isSubProject(text)) return 1;
-  const project = text === "AWWASchool-web" || text === "AWWASchool-api";
   const module = text === "Social Work Module";
   const action = /^(Added|Changed|Enforce|Set|Include):?\b/i.test(text) || text === "Database:";
-  const topHeading = text === "Meetings Attended:" || text === "AWWA School:";
+  const topHeading = text === "Meetings Attended:";
 
   if (isOvertime) {
-    if (text === "AWWA School") return 0;
-    if (project) return 1;
     if (isActionLine(text) && parent && isSubProject(parent)) return 2;
     if (action) return 2;
     return 3;
   }
   if (topHeading) return 0;
-  if (project) return 1;
   if (module) return 2;
   if (text.startsWith("Added: route config")) return 2;
   if (isActionLine(text) && parent && isSubProject(parent)) return 2;
@@ -270,7 +285,7 @@ function isSubProject(text: string) {
 }
 
 function isProjectRoot(text: string) {
-  return text !== "Meetings Attended:" && text !== "Database:" && (text === "AWWA School:" || /^[A-Z0-9][A-Z0-9 &_-]*$/.test(text) || (text.endsWith(":") && !isActionLine(text)));
+  return text !== "Meetings Attended:" && text !== "Database:" && (/^[A-Z0-9][A-Z0-9 &_-]*$/.test(text) || (text.endsWith(":") && !isActionLine(text)));
 }
 
 function renderReportNodes(nodes: ReportNode[], parentLevel: number, isOvertime: boolean): string {
@@ -285,7 +300,7 @@ function escapeHtml(value: string) {
 }
 
 function isHeading(line: string) {
-  return line.trim().endsWith(":") || line === "AWWA School" || line === "AWWASchool-web" || line === "AWWASchool-api" || line === "Social Work Module";
+  return line.trim().endsWith(":") || isSubProject(line) || line === "Social Work Module";
 }
 
 function isReportHeading(line: string) {
