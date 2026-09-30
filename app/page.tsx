@@ -93,7 +93,7 @@ export default function Home() {
         <section className="editor-panel">
           <div className="panel-heading"><div><p className="eyebrow">COMPOSE</p><h2>Your daily report</h2></div><span className="required">* Required fields</span></div>
           <label>Opening note<span className="optional">Optional</span><textarea value={report.greeting} onChange={(event) => update("greeting", event.target.value)} rows={3} /></label>
-          <label>Accomplished <span className="required">*</span><textarea value={report.accomplishments} onChange={(event) => update("accomplishments", event.target.value)} rows={9} placeholder="List meetings, completed tasks, and meaningful progress..." /><small>Tip: use a new line for each item. Group work by project for clarity.</small></label>
+          <label>Accomplished <span className="required">*</span><textarea value={report.accomplishments} onChange={(event) => update("accomplishments", event.target.value)} rows={9} placeholder="List meetings, projects, and completed tasks..." /><small>Add projects on their own line, for example:<br />SSCC<br />sscc-api<br />sscc-web</small></label>
           <div className="section-label overtime-toggle"><label className="checkbox-label"><input type="checkbox" checked={report.overtimeEnabled} onChange={(event) => update("overtimeEnabled", event.target.checked)} /> <span>Include overtime</span></label><span className="optional">Optional</span></div>
           {report.overtimeEnabled ? <div className="overtime-grid"><label>Time range<input type="text" value={report.overtimeTime} onChange={(event) => update("overtimeTime", event.target.value)} placeholder="6:00pm - 9:00pm" /></label><label>Work completed<textarea value={report.overtime} onChange={(event) => update("overtime", event.target.value)} rows={3} placeholder="Leave blank if none" /></label></div> : <p className="disabled-note">Overtime is hidden from the report.</p>}
           <label>Blockers <span className="required">*</span><textarea value={report.blockers} onChange={(event) => update("blockers", event.target.value)} rows={6} placeholder="None. Or include category, solution, expected date, and status." /><small>Keep unresolved blockers here until the day they are resolved. Categorize as Internal or External.</small></label>
@@ -173,7 +173,7 @@ function buildReportNodes(title: string, value: string) {
   const stack: ReportNode[] = [];
   let meetingsMode = title === "Accomplished";
   rows.forEach((text) => {
-    if (text === "AWWA School:") meetingsMode = false;
+    if (isProjectRoot(text) || text === "AWWA School") meetingsMode = false;
     const level = meetingsMode && text !== "Meetings Attended:" ? 1 : reportLevel(text, title, stack.at(-1)?.text);
     const node: ReportNode = { text, level, children: [] };
     while (stack.length && stack.at(-1)!.level >= level) stack.pop();
@@ -228,6 +228,9 @@ function toRoman(value: number) {
 
 function reportLevel(text: string, title: string, parent?: string) {
   const isOvertime = title.startsWith("Accomplished - OT");
+  if (text === "AWWA School") return 0;
+  if (isProjectRoot(text)) return 0;
+  if (isSubProject(text)) return 1;
   const project = text === "AWWASchool-web" || text === "AWWASchool-api";
   const module = text === "Social Work Module";
   const action = /^(Added|Changed|Enforce|Set|Include):?\b/i.test(text) || text === "Database:";
@@ -236,6 +239,7 @@ function reportLevel(text: string, title: string, parent?: string) {
   if (isOvertime) {
     if (text === "AWWA School") return 0;
     if (project) return 1;
+    if (isActionLine(text) && parent && isSubProject(parent)) return 2;
     if (action) return 2;
     return 3;
   }
@@ -243,9 +247,22 @@ function reportLevel(text: string, title: string, parent?: string) {
   if (project) return 1;
   if (module) return 2;
   if (text.startsWith("Added: route config")) return 2;
+  if (isActionLine(text) && parent && isSubProject(parent)) return 2;
   if (action) return 3;
   if (parent === "Meetings Attended:") return 1;
   return 4;
+}
+
+function isActionLine(text: string) {
+  return /^(Added|Changed|Enforce|Set|Include):?\b/i.test(text) || text === "Database:";
+}
+
+function isSubProject(text: string) {
+  return /-(api|web)$/i.test(text);
+}
+
+function isProjectRoot(text: string) {
+  return text !== "Meetings Attended:" && text !== "Database:" && (text === "AWWA School:" || /^[A-Z0-9][A-Z0-9 &_-]*$/.test(text) || (text.endsWith(":") && !isActionLine(text)));
 }
 
 function renderReportNodes(nodes: ReportNode[], parentLevel: number, isOvertime: boolean): string {
