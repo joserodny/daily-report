@@ -79,6 +79,7 @@ small { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; li
 .activity-row span { min-width: 0; padding: 8px 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity-header { color: var(--green); background: var(--mint); font: 500 9px 'DM Mono', monospace; text-transform: uppercase; }
 .activity-more { margin-top: 8px; text-transform: none; letter-spacing: 0; }
+.activity-total { margin-top: 10px; color: var(--green); text-transform: none; letter-spacing: 0; }
 @media (max-width: 950px) { .shell { padding: 0 24px 50px; } .workspace { grid-template-columns: 1fr; } .preview-panel { position: static; } .intro { padding: 50px 0 40px; } }
 @media (max-width: 620px) { .topbar { height: 70px; } .autosave, .top-actions .button-ghost { display: none; } .top-actions { gap: 8px; } .intro { display: block; } .date-card { margin-top: 28px; } .editor-panel, .preview-panel { padding: 20px; } .overtime-grid { grid-template-columns: 1fr; gap: 0; } .paper { padding: 30px 25px; } .form-footer { align-items: flex-start; flex-direction: column; } }
 @media print { .topbar, .intro, .editor-panel, .preview-heading, .send-hint { display: none; } .shell { padding: 0; } .workspace, .preview-panel { display: block; border: 0; padding: 0; background: white; } .paper { margin: 0; box-shadow: none; max-width: none; } }
