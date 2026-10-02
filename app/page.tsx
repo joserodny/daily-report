@@ -57,12 +57,13 @@ export default function Home() {
   const activityText = buildActivityText(activityRows, report.date);
 
   const save = () => {
-    window.localStorage.setItem("daily-report", JSON.stringify(report));
+    persistReport(report);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
   };
 
   const copy = async () => {
+    persistReport(report);
     if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
       await navigator.clipboard.write([
         new ClipboardItem({
@@ -109,6 +110,10 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+function persistReport(report: Report) {
+  window.localStorage.setItem("daily-report", JSON.stringify(report));
 }
 
 function ReportSection({ title, value, muted = false }: { title: string; value: string; muted?: boolean }) {
@@ -178,7 +183,7 @@ function buildActivityText(rows: ActivityRow[], date: string) {
 
 function formatShortDate(date: string) {
   const [year, month, day] = date.split("-");
-  return `${day}/${month}/${year}`;
+  return `${month}/${day}/${year}`;
 }
 
 function buildReportHtml(report: Report, subject: string) {
