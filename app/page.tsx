@@ -16,8 +16,13 @@ type Report = {
 
 type ActivityRow = { project: string; task: string; hours: string };
 
+const getLocalDate = () => {
+  const date = new Date();
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+};
+
 const emptyReport: Report = {
-  date: new Date().toISOString().slice(0, 10),
+  date: getLocalDate(),
   greeting: "Dear Mr. Heng,\n\nPlease find the below report.",
   accomplishments: "Meetings Attended:\nDaily Meeting with Engineers\nDaily Leadership Huddles\n\nAWWA School:\nAWWASchool-web\nSocial Work Module\nAdded: the following UI\nCase transfer details page - acknowledgements section\nChanged: case transfer service\nEnforce acknowledge case transfer api\nAdded: Case transfer enum\nCase transfer acknowledgement types\nChanged: case transfer status enum\nChanged: integrate the following\nAcknowledge Case Transfer API\nAdded: route config for case transfer details and form\n\nAWWASchool-api\nSocial Work Module\nAdded: process acknowledgement\nSet status based on acknowledgement types\nInclude status validation\nAdded: case transfer acknowledgement model\n\nDatabase:\nChanged: include 'is_acknowledge' field in 'case_transfer_acknowledgement' table",
   overtime: "AWWA School:\nAWWASchool-web\nAdded: cancel case transfer dialog UI\nChanged: integrate cancel transfer API\nEnforce: case transfer permissions\n\nAWWASchool-api\nAdded: cancel case transfer function\nAdded: cancel rules validation\nAdded: api route for cancel case transfer\nAdded: case transfer permissions\n\nDatabase:\nChanged: include 'cancel_reason' field in 'social_work_case_transfers' table",
@@ -43,7 +48,8 @@ export default function Home() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("daily-report");
-    if (stored) setReport(JSON.parse(stored));
+    if (stored) setReport({ ...JSON.parse(stored), date: getLocalDate() });
+    else setReport((current) => ({ ...current, date: getLocalDate() }));
   }, []);
 
   const subject = useMemo(() => `Daily Report for ${formatDate(report.date)}`, [report.date]);
