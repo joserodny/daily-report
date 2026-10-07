@@ -152,7 +152,7 @@ function buildActivityRows(value: string, totalHours?: number): ActivityRow[] {
     rows.push({ project: isMeeting ? "General" : project, task: line, hours: isMeeting ? "0.5" : "" });
     if (!isMeeting) taskRows.push(rows.length - 1);
   });
-  if (totalHours === undefined) taskRows.forEach((rowIndex) => { rows[rowIndex].hours = randomTaskHours(); });
+  if (totalHours === undefined) taskRows.forEach((rowIndex) => { rows[rowIndex].hours = randomTaskHours(rows[rowIndex].task); });
   else {
     const meetingHours = rows.filter((row) => row.hours === "0.5").length * 0.5;
     distributeRandomHours(taskRows, rows, Math.max(0, totalHours - meetingHours));
@@ -160,26 +160,40 @@ function buildActivityRows(value: string, totalHours?: number): ActivityRow[] {
   return rows;
 }
 
-function randomTaskHours() {
-  return String([0.5, 1, 1.5, 2][Math.floor(Math.random() * 4)]);
+function randomTaskHours(task: string) {
+  return String([0.5, 1, 1.5, 2][Math.floor(createSeededRandom(task)() * 4)]);
 }
 
 function distributeRandomHours(taskRows: number[], rows: ActivityRow[], totalHours: number) {
   let remainingUnits = Math.round(totalHours * 4);
   const assignedUnits = taskRows.map(() => 1);
   remainingUnits -= taskRows.length;
+  const random = createSeededRandom(taskRows.map((rowIndex) => rows[rowIndex].task).join("|"));
   while (remainingUnits > 0 && taskRows.length) {
     const eligible = assignedUnits.map((units, index) => units < 8 ? index : -1).filter((index) => index >= 0);
     if (!eligible.length) {
       assignedUnits[0] += remainingUnits;
       break;
     }
-    const slot = eligible[Math.floor(Math.random() * eligible.length)];
-    const units = Math.min(remainingUnits, Math.floor(Math.random() * Math.min(8 - assignedUnits[slot], remainingUnits)) + 1);
+    const slot = eligible[Math.floor(random() * eligible.length)];
+    const units = Math.min(remainingUnits, Math.floor(random() * Math.min(8 - assignedUnits[slot], remainingUnits)) + 1);
     assignedUnits[slot] += units;
     remainingUnits -= units;
   }
   assignedUnits.forEach((units, index) => { rows[taskRows[index]].hours = String(units / 4); });
+}
+
+function createSeededRandom(seed: string) {
+  let hash = 2166136261;
+  for (const character of seed) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return () => {
+    hash += hash << 13;
+    hash ^= hash >>> 7;
+    hash += hash << 3;
+    hash ^= hash >>> 17;
+    hash += hash << 5;
+    return (hash >>> 0) / 4294967296;
+  };
 }
 
 function buildActivityText(rows: ActivityRow[], date: string) {
