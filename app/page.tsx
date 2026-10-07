@@ -135,14 +135,13 @@ function PreviewNodes({ nodes, isOvertime, parentLevel = 0 }: { nodes: ReportNod
 
 function ActivityLog({ rows, date, copied, onCopy }: { rows: ActivityRow[]; date: string; copied: boolean; onCopy: () => void }) {
   const totalHours = rows.reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
-  return <section className="activity-card"><div className="activity-heading"><div><p className="eyebrow">DAILY ACTIVITY LOG</p><h3>Excel-ready rows</h3></div><button className="button button-ghost" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div><p className="activity-note">Projects are grouped like your Excel log. The date appears once as the column header; meeting hours stay blank.</p><div className="activity-table"><div className="activity-row activity-header"><span>Project</span><span>Task</span><span>{formatShortDate(date)}</span></div>{rows.slice(0, 8).map((row, index) => <div className="activity-row" key={`${row.task}-${index}`}><span>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</span><span>{row.task}</span><span>{row.hours}</span></div>)}</div><small className="activity-total">Generated task total: {totalHours} hrs</small>{rows.length > 8 ? <small className="activity-more">+ {rows.length - 8} more rows included when copied</small> : null}</section>;
+  return <section className="activity-card"><div className="activity-heading"><div><p className="eyebrow">DAILY ACTIVITY LOG</p><h3>Excel-ready rows</h3></div><button className="button button-ghost" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div><p className="activity-note">Projects are grouped like your Excel log. The date appears once as the column header; meetings use 0.5 hours.</p><div className="activity-table"><div className="activity-row activity-header"><span>Project</span><span>Task</span><span>{formatShortDate(date)}</span></div>{rows.slice(0, 8).map((row, index) => <div className="activity-row" key={`${row.task}-${index}`}><span>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</span><span>{row.task}</span><span>{row.hours}</span></div>)}</div><small className="activity-total">Generated task total: {totalHours} hrs</small>{rows.length > 8 ? <small className="activity-more">+ {rows.length - 8} more rows included when copied</small> : null}</section>;
 }
 
-function buildActivityRows(value: string, maxHours?: number): ActivityRow[] {
+function buildActivityRows(value: string, totalHours?: number): ActivityRow[] {
   const rows: ActivityRow[] = [];
   let project = "General";
   let meetings = false;
-  let taskIndex = 0;
   const taskRows: number[] = [];
   value.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
     if (line === "Meetings Attended:") { meetings = true; return; }
@@ -150,37 +149,36 @@ function buildActivityRows(value: string, maxHours?: number): ActivityRow[] {
     if (isSubProject(line) || line === "Database:") { project = line.replace(":", ""); return; }
     if (line === "Social Work Module") return;
     const isMeeting = meetings;
-    if (isMeeting) rows.push({ project: "General", task: line, hours: "" });
-    else {
-      rows.push({ project, task: line, hours: "" });
-      taskRows.push(rows.length - 1);
-      taskIndex += 1;
-    }
+    rows.push({ project: isMeeting ? "General" : project, task: line, hours: isMeeting ? "0.5" : "" });
+    if (!isMeeting) taskRows.push(rows.length - 1);
   });
-  if (maxHours === undefined) {
-    taskRows.forEach((rowIndex, index) => { rows[rowIndex].hours = String([0.5, 1, 1.5, 2][index % 4]); });
-  } else {
-    distributeHours(taskRows.length, maxHours).forEach((hours, index) => { rows[taskRows[index]].hours = hours ? String(hours) : ""; });
+  if (totalHours === undefined) taskRows.forEach((rowIndex) => { rows[rowIndex].hours = randomTaskHours(); });
+  else {
+    const meetingHours = rows.filter((row) => row.hours === "0.5").length * 0.5;
+    distributeRandomHours(taskRows, rows, Math.max(0, totalHours - meetingHours));
   }
   return rows;
 }
 
-function distributeHours(count: number, total: number) {
-  if (!count) return [];
-  const totalUnits = Math.round(total * 2);
-  const activeCount = Math.min(count, totalUnits);
-  const hours = Array.from({ length: count }, () => 0);
-  for (let index = 0; index < activeCount; index += 1) hours[index] = 1;
-  let remainingUnits = totalUnits - activeCount;
-  let seed = count * 97 + totalUnits * 13;
-  for (let index = 0; index < activeCount - 1; index += 1) {
-    seed = (seed * 9301 + 49297) % 233280;
-    const extraUnits = index === activeCount - 2 ? remainingUnits : Math.floor((seed / 233280) * (remainingUnits + 1));
-    hours[index] += extraUnits;
-    remainingUnits -= extraUnits;
+function randomTaskHours() {
+  return String([0.5, 1, 1.5, 2][Math.floor(Math.random() * 4)]);
+}
+
+function distributeRandomHours(taskRows: number[], rows: ActivityRow[], totalHours: number) {
+  let remainingUnits = Math.round(totalHours * 2);
+  const assignedUnits = taskRows.map(() => 0);
+  while (remainingUnits > 0 && taskRows.length) {
+    const eligible = assignedUnits.map((units, index) => units < 4 ? index : -1).filter((index) => index >= 0);
+    if (!eligible.length) {
+      assignedUnits[0] += remainingUnits;
+      break;
+    }
+    const slot = eligible[Math.floor(Math.random() * eligible.length)];
+    const units = Math.min(remainingUnits, Math.floor(Math.random() * Math.min(4 - assignedUnits[slot], remainingUnits)) + 1);
+    assignedUnits[slot] += units;
+    remainingUnits -= units;
   }
-  if (activeCount) hours[activeCount - 1] += remainingUnits;
-  return hours.map((units) => units / 2);
+  assignedUnits.forEach((units, index) => { rows[taskRows[index]].hours = String(units / 2); });
 }
 
 function buildActivityText(rows: ActivityRow[], date: string) {
