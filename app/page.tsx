@@ -165,20 +165,21 @@ function randomTaskHours() {
 }
 
 function distributeRandomHours(taskRows: number[], rows: ActivityRow[], totalHours: number) {
-  let remainingUnits = Math.round(totalHours * 2);
-  const assignedUnits = taskRows.map(() => 0);
+  let remainingUnits = Math.round(totalHours * 4);
+  const assignedUnits = taskRows.map(() => 1);
+  remainingUnits -= taskRows.length;
   while (remainingUnits > 0 && taskRows.length) {
-    const eligible = assignedUnits.map((units, index) => units < 4 ? index : -1).filter((index) => index >= 0);
+    const eligible = assignedUnits.map((units, index) => units < 8 ? index : -1).filter((index) => index >= 0);
     if (!eligible.length) {
       assignedUnits[0] += remainingUnits;
       break;
     }
     const slot = eligible[Math.floor(Math.random() * eligible.length)];
-    const units = Math.min(remainingUnits, Math.floor(Math.random() * Math.min(4 - assignedUnits[slot], remainingUnits)) + 1);
+    const units = Math.min(remainingUnits, Math.floor(Math.random() * Math.min(8 - assignedUnits[slot], remainingUnits)) + 1);
     assignedUnits[slot] += units;
     remainingUnits -= units;
   }
-  assignedUnits.forEach((units, index) => { rows[taskRows[index]].hours = String(units / 2); });
+  assignedUnits.forEach((units, index) => { rows[taskRows[index]].hours = String(units / 4); });
 }
 
 function buildActivityText(rows: ActivityRow[], date: string) {
