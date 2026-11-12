@@ -10,8 +10,10 @@ export type MailJob = { id: string; owner: string; sendAt: string; to: string; c
 
 const dataDir = path.join(process.cwd(), "data");
 const logoPath = path.join(process.cwd(), "public", "signature-logos.png");
-const redisUrl = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-const redisToken = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+const redisUrlKey = Object.keys(process.env).find((key) => /(REST_API|REDIS_REST)_URL$/.test(key) && process.env[key.replace(/URL$/, "TOKEN")]);
+const redisUrl = redisUrlKey && process.env[redisUrlKey];
+const redisToken = redisUrlKey && process.env[redisUrlKey.replace(/URL$/, "TOKEN")];
+const missingStorage = "Storage is not connected. In Vercel open Storage, add Upstash for Redis, connect it to this project, then redeploy.";
 
 async function redis(command: (string | number)[]) {
   const response = await fetch(redisUrl!, { method: "POST", headers: { Authorization: `Bearer ${redisToken}` }, body: JSON.stringify(command), cache: "no-store" });
@@ -21,6 +23,7 @@ async function redis(command: (string | number)[]) {
 }
 
 async function readStored<T>(key: string): Promise<T | null> {
+  if (!redisUrl && process.env.VERCEL) throw new Error(missingStorage);
   try {
     const value = redisUrl ? await redis(["GET", key]) : await fs.readFile(localPath(key), "utf8");
     return value ? JSON.parse(value) : null;
@@ -31,6 +34,7 @@ async function readStored<T>(key: string): Promise<T | null> {
 }
 
 async function writeStored(key: string, value: unknown) {
+  if (!redisUrl && process.env.VERCEL) throw new Error(missingStorage);
   if (redisUrl) return void await redis(value === null ? ["DEL", key] : ["SET", key, JSON.stringify(value)]);
   if (value === null) return fs.rm(localPath(key), { force: true });
   await fs.mkdir(dataDir, { recursive: true });

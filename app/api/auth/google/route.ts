@@ -52,7 +52,11 @@ export async function GET(request: NextRequest) {
   const profile = await (await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${tokens.access_token}` } })).json();
   const email = String(profile.email ?? "").toLowerCase();
   if (!profile.email_verified || !isAllowedEmail(email)) return fail(`${email} is not allowed to use this app.`);
-  await saveGoogleAccount({ email, name: profile.name ?? email, refreshToken: tokens.refresh_token });
+  try {
+    await saveGoogleAccount({ email, name: profile.name ?? email, refreshToken: tokens.refresh_token });
+  } catch (error) {
+    return fail((error as Error).message);
+  }
   const response = NextResponse.redirect(home);
   const session = createSession(email);
   response.cookies.set(sessionCookie, session.value, { httpOnly: true, secure: url.protocol === "https:", sameSite: "lax", maxAge: session.maxAge, path: "/" });

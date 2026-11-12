@@ -84,6 +84,7 @@ export default function Home() {
     fetch("/api/auth").then((response) => response.json()).then((account) => {
       setGmail(account.email);
       setGmailName(account.name ?? "");
+      if (account.error) setLoginError(account.error);
       if (!account.email) return;
       fetch("/api/activity-log").then((response) => response.json()).then((log) => setLogName(log.name ?? null));
       loadJobs();

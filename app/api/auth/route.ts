@@ -4,8 +4,12 @@ import { deleteGoogleAccount, readGoogleAccount, requireSession, sessionCookie }
 export async function GET(request: NextRequest) {
   const owner = requireSession(request);
   if (owner instanceof Response) return Response.json({ email: null, name: null });
-  const account = await readGoogleAccount(owner);
-  return Response.json({ email: account?.email ?? null, name: account?.name ?? null });
+  try {
+    const account = await readGoogleAccount(owner);
+    return Response.json({ email: account?.email ?? null, name: account?.name ?? null });
+  } catch (error) {
+    return Response.json({ email: null, name: null, error: (error as Error).message });
+  }
 }
 
 export async function DELETE(request: NextRequest) {
