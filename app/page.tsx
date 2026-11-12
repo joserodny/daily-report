@@ -21,6 +21,9 @@ type Report = {
 };
 
 type ActivityRow = { project: string; task: string; hours: string };
+const emailStorageKey = "daily-report-email";
+const emailFields: (keyof Report)[] = ["to", "cc", "signatureName", "signatureTitle"];
+
 type MailJob = { id: string; sendAt: string; to: string; error?: string };
 
 const getLocalDate = () => {
@@ -70,8 +73,9 @@ export default function Home() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("daily-report");
-    if (stored) setReport({ ...emptyReport, ...JSON.parse(stored), date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` });
-    else setReport((current) => ({ ...current, date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` }));
+    const email = JSON.parse(window.localStorage.getItem(emailStorageKey) ?? "{}");
+    if (stored) setReport({ ...emptyReport, ...JSON.parse(stored), ...email, date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` });
+    else setReport((current) => ({ ...current, ...email, date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` }));
     const error = new URLSearchParams(window.location.search).get("login_error");
     if (error) {
       setLoginError(error);
@@ -87,7 +91,11 @@ export default function Home() {
   }, []);
 
   const subject = useMemo(() => `Daily Report for ${formatDate(report.date)}`, [report.date]);
-  const update = (key: keyof Report, value: string | boolean) => setReport((current) => ({ ...current, [key]: value, ...(key === "date" && { sendAt: `${value}T18:00` }) }));
+  const update = (key: keyof Report, value: string | boolean) => setReport((current) => {
+    const next = { ...current, [key]: value, ...(key === "date" && { sendAt: `${value}T18:00` }) };
+    if (emailFields.includes(key)) window.localStorage.setItem(emailStorageKey, JSON.stringify(Object.fromEntries(emailFields.map((field) => [field, next[field]]))));
+    return next;
+  });
   const reportText = buildReportText(report, subject);
   const reportHtml = buildReportHtml(report, subject);
   const activityRows = useMemo(() => {
