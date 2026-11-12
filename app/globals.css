@@ -55,7 +55,6 @@ small { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; li
 .word-count { color: var(--muted); font: 10px 'DM Mono', monospace; }
 .preview-pill { border: 1px solid #cdd8cf; border-radius: 20px; padding: 6px 9px; color: var(--green); font: 10px 'DM Mono', monospace; }
 .paper { margin: 24px auto 17px; max-width: 510px; min-height: 700px; padding: 42px 45px; box-shadow: 0 12px 30px rgba(38,61,48,.09); background: var(--paper); }
-.paper h3 { margin-bottom: 28px; font-size: 17px; line-height: 1.4; letter-spacing: -.02em; }
 .paper-content { color: #33403a; font-size: 10px; line-height: 1.45; }
 .paper-content > p { white-space: pre-line; }
 .paper-section { margin: 24px 0; }
