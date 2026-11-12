@@ -57,14 +57,16 @@ export default function Home() {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activityCopied, setActivityCopied] = useState(false);
-  const [mailStatus, setMailStatus] = useState("");
+  const [status, setStatus] = useState({ text: "", error: false });
+  const [busy, setBusy] = useState(false);
+  const notify = (text: string, error = false) => setStatus({ text, error });
   const [logName, setLogName] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<MailJob[]>([]);
+  const [jobs, setJobs] = useState<MailJob[] | null>(null);
   const [gmail, setGmail] = useState<string | null>(null);
   const [gmailName, setGmailName] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  const loadJobs = () => fetch("/api/send").then((response) => response.json()).then((result) => setJobs(Array.isArray(result) ? result : []));
+  const loadJobs = () => fetch("/api/send").then((response) => response.json()).then((result) => setJobs(Array.isArray(result) ? result : [])).catch(() => setJobs([]));
 
   useEffect(() => {
     const stored = window.localStorage.getItem("daily-report");
@@ -75,12 +77,13 @@ export default function Home() {
       setLoginError(error);
       window.history.replaceState(null, "", "/");
     }
-    fetch("/api/activity-log").then((response) => response.json()).then((log) => setLogName(log.name ?? null));
     fetch("/api/auth").then((response) => response.json()).then((account) => {
       setGmail(account.email);
       setGmailName(account.name ?? "");
-    });
-    loadJobs();
+      if (!account.email) return;
+      fetch("/api/activity-log").then((response) => response.json()).then((log) => setLogName(log.name ?? null));
+      loadJobs();
+    }).catch(() => setLoginError("Could not reach the server. Reload the page to try again."));
   }, []);
 
   const subject = useMemo(() => `Daily Report for ${formatDate(report.date)}`, [report.date]);
@@ -100,7 +103,7 @@ export default function Home() {
     if (!logName) return;
     const response = await fetch("/api/activity-log", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: report.date, rows: activityRows }) });
     const result = await response.json();
-    setMailStatus(response.ok ? `Activity log updated for ${formatShortDate(report.date)}` : result.error);
+    notify(response.ok ? `Activity log updated for ${formatShortDate(report.date)}` : result.error, !response.ok);
   };
 
   const signOut = async () => {
@@ -110,15 +113,20 @@ export default function Home() {
 
   const copy = async () => {
     persistReport(report);
-    if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([reportHtml], { type: "text/html" }),
-          "text/plain": new Blob([reportText], { type: "text/plain" }),
-        }),
-      ]);
-    } else {
-      await navigator.clipboard.writeText(reportText);
+    try {
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([reportHtml], { type: "text/html" }),
+            "text/plain": new Blob([reportText], { type: "text/plain" }),
+          }),
+        ]).catch(() => navigator.clipboard.writeText(reportText));
+      } else {
+        await navigator.clipboard.writeText(reportText);
+      }
+    } catch {
+      notify("Copy failed. Allow clipboard access for this site and try again.", true);
+      return;
     }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
@@ -133,24 +141,28 @@ export default function Home() {
   const send = async (schedule: boolean) => {
     if (!schedule && !window.confirm(`Send "${subject}" to ${report.to} now?`)) return;
     persistReport(report);
-    setMailStatus(schedule ? "Scheduling..." : "Sending...");
+    setBusy(true);
+    notify(schedule ? "Scheduling..." : "Sending...");
     const response = await fetch("/api/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to: report.to, cc: report.cc, subject, html: buildReportHtml(report, subject, false), date: report.date, rows: activityRows, signatureName: report.signatureName, signatureTitle: report.signatureTitle, sendAt: schedule ? new Date(report.sendAt).toISOString() : undefined }),
-    });
-    const result = await response.json();
-    setMailStatus(response.ok ? (schedule ? `Scheduled for ${new Date(result.sendAt).toLocaleString()}` : "Sent") : result.error);
+    }).catch(() => null);
+    const result = await response?.json().catch(() => null) ?? { error: "Could not reach the server. Check your connection and try again." };
+    setBusy(false);
+    const ok = Boolean(response?.ok);
+    notify(ok ? (schedule ? `Scheduled for ${new Date(result.sendAt).toLocaleString()}` : `Sent to ${report.to}`) : result.error, !ok);
     loadJobs();
   };
 
   const importLog = async (file: File) => {
     const body = new FormData();
     body.append("file", file);
+    notify(`Importing ${file.name}...`);
     const response = await fetch("/api/activity-log", { method: "POST", body });
     const result = await response.json();
     if (response.ok) setLogName(result.name);
-    setMailStatus(response.ok ? `Imported ${result.name}` : result.error);
+    notify(response.ok ? `Imported ${result.name}` : result.error, !response.ok);
   };
 
   const cancelJob = async (id: string) => {
@@ -159,37 +171,50 @@ export default function Home() {
   };
 
   return (
-    <main className="shell">
+    <div className="shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Daily Report home"><span className="brand-mark">DR</span><span>Daily Report</span></a>
-        <div className="top-actions"><span className="autosave"><span className="status-dot" /> Saved locally</span><button className="button button-ghost" onClick={() => window.print()}>Print report</button><button className="button button-dark" onClick={save}>{saved ? "Saved" : "Save report"}</button></div>
+        <a className="brand" href="/"><span className="brand-mark" aria-hidden="true">DR</span><span>Daily Report</span></a>
+        <div className="top-actions"><button className="button" onClick={() => window.print()}>Print report</button><button className="button button-dark" onClick={save}>{saved ? "Saved" : "Save report"}</button></div>
       </header>
 
-      <section className="intro"><div><p className="eyebrow">WORK LOG · 2026</p><h1>Make today <em>count.</em></h1><p className="subtitle">A clear daily report takes less than five minutes. Capture the work, call out the blockers, and start tomorrow with direction.</p></div><div className="date-card"><span>Report date</span><input type="date" value={report.date} onChange={(event) => update("date", event.target.value)} /></div></section>
-
-      <div className="workspace">
-        <section className="editor-panel">
-          <div className="panel-heading"><div><p className="eyebrow">COMPOSE</p><h2>Your daily report</h2></div><span className="required">* Required fields</span></div>
-          <label>Opening note<span className="optional">Optional</span><textarea value={report.greeting} onChange={(event) => update("greeting", event.target.value)} rows={3} /></label>
-          <label>Accomplished <span className="required">*</span><textarea value={report.accomplishments} onChange={(event) => update("accomplishments", event.target.value)} rows={9} placeholder="List meetings, projects, and completed tasks..." /><small>Add projects on their own line, for example:<br />SSCC<br />sscc-api<br />sscc-web</small></label>
-          <div className="section-label overtime-toggle"><label className="checkbox-label"><input type="checkbox" checked={report.overtimeEnabled} onChange={(event) => update("overtimeEnabled", event.target.checked)} /> <span>Include overtime</span></label><span className="optional">Optional</span></div>
-          {report.overtimeEnabled ? <div className="overtime-grid"><label>Time range<input type="text" value={report.overtimeTime} onChange={(event) => update("overtimeTime", event.target.value)} placeholder="6:00pm - 9:00pm" /></label><label>Work completed<textarea value={report.overtime} onChange={(event) => update("overtime", event.target.value)} rows={3} placeholder="Leave blank if none" /></label></div> : <p className="disabled-note">Overtime is hidden from the report.</p>}
-          <label>Blockers <span className="required">*</span><textarea value={report.blockers} onChange={(event) => update("blockers", event.target.value)} rows={6} placeholder="None. Or include category, solution, expected date, and status." /><small>Keep unresolved blockers here until the day they are resolved. Categorize as Internal or External.</small></label>
-          <label>Notes <span className="required">*</span><textarea value={report.notes} onChange={(event) => update("notes", event.target.value)} rows={4} placeholder="Important updates, leave, or management attention..." /></label>
-          <label>Next day tasks <span className="required">*</span><textarea value={report.nextTasks} onChange={(event) => update("nextTasks", event.target.value)} rows={6} placeholder="What will you work on next?" /></label>
-          <div className="section-label overtime-toggle"><p className="eyebrow">EMAIL</p>{gmail ? <span className="optional">Sending as {gmail} <button className="button button-ghost" onClick={signOut}>Sign out</button></span> : <a className="button button-dark" href="/api/auth/google">Sign in with Gmail</a>}</div>
-          {loginError && !gmail ? <p className="disabled-note login-error">{loginError}</p> : null}
-          <div className="mail-grid"><label>To <span className="required">*</span><input type="text" value={report.to} onChange={(event) => update("to", event.target.value)} placeholder="name@cyberland.edu.sg, ..." /></label><label>Cc<span className="optional">Optional</span><input type="text" value={report.cc} onChange={(event) => update("cc", event.target.value)} placeholder="Separate with commas" /></label></div>
-          <div className="mail-grid"><label>Signature name<input type="text" value={report.signatureName} onChange={(event) => update("signatureName", event.target.value)} placeholder={gmailName || "Your name"} /></label><label>Signature title<input type="text" value={report.signatureTitle} onChange={(event) => update("signatureTitle", event.target.value)} placeholder="Software Engineer" /></label></div>
-          <label>Activity log<span className="optional">{logName ?? "Not imported"}</span><input type="file" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) importLog(file); }} /><small>Save or send updates the block for the report date. A new date is inserted at A4:D22 (older days shift right). The file is attached to every send. {logName ? <a href="/api/activity-log?download">Download current</a> : "Without an import, the email is sent with no attachment."}</small></label>
-          <label>Schedule send<span className="optional">Optional</span><input type="datetime-local" value={report.sendAt} onChange={(event) => update("sendAt", event.target.value)} /><small>Scheduled emails are sent by the running app, so keep it running until the send time.</small></label>
-          {jobs.map((job) => <p className="disabled-note" key={job.id}>{job.error ? `Failed: ${job.error}` : `Scheduled ${new Date(job.sendAt).toLocaleString()} to ${job.to}`} <button className="button button-ghost" onClick={() => cancelJob(job.id)}>{job.error ? "Dismiss" : "Cancel"}</button></p>)}
-          <div className="form-footer"><span className="word-count">{mailStatus || `${reportText.split(/\s+/).filter(Boolean).length} words`}</span><div><button className="button button-ghost" onClick={copy}>{copied ? "Copied" : "Copy report"}</button><button className="button button-dark" onClick={save}>{saved ? "Saved" : "Save report"}</button><button className="button button-ghost" onClick={() => send(true)} disabled={!report.sendAt || !gmail}>Schedule send</button><button className="button button-dark" onClick={() => send(false)} disabled={!gmail}>Send now</button></div></div>
+      <main>
+        <section className="intro" aria-labelledby="page-title">
+          <div><h1 id="page-title">Daily report, <em>{formatDate(report.date)}</em></h1><p className="subtitle">Write the day on the left. The right side shows the exact email your manager receives, with the activity log attached.</p></div>
+          <label className="date-card">Report date<input type="date" value={report.date} onChange={(event) => update("date", event.target.value)} /></label>
         </section>
 
-        <aside className="preview-panel"><div className="preview-heading"><div><p className="eyebrow">LIVE PREVIEW</p><h2>Ready to send</h2></div><span className="preview-pill">A4</span></div><article className="paper"><div className="paper-content"><div className="paper-email" dangerouslySetInnerHTML={{ __html: classificationHtml }} /><p>{report.greeting}</p><ReportSection title="Accomplished" value={report.accomplishments} />{report.overtimeEnabled ? <ReportSection title={`Accomplished - OT [${report.overtimeTime}]`} value={report.overtime || "None"} /> : null}<ReportSection title="Blockers" value={report.blockers} /><ReportSection title="Notes" value={report.notes} /><ReportSection title="Next Day Tasks" value={report.nextTasks} /><p className="closing">Thank you!</p><div className="paper-email" dangerouslySetInnerHTML={{ __html: signatureHtml(report.signatureName || gmailName || "Your name", report.signatureTitle, "/signature-logos.png") }} /></div></article><button className="send-hint" onClick={copy}><span className="send-icon">↗</span><span><strong>Copy a polished version</strong><small>Paste it into email or your team chat</small></span><span className="arrow">→</span></button><ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} /></aside>
-      </div>
-    </main>
+        <div className="workspace">
+          <section className="editor-panel" aria-labelledby="editor-title">
+            <div className="panel-heading"><h2 id="editor-title">Write the report</h2><span className="hint"><span className="required" aria-hidden="true">*</span> required</span></div>
+            <label>Opening note<span className="optional">optional</span><textarea value={report.greeting} onChange={(event) => update("greeting", event.target.value)} rows={3} /></label>
+            <label>Accomplished <span className="required" aria-hidden="true">*</span><textarea value={report.accomplishments} onChange={(event) => update("accomplishments", event.target.value)} rows={9} placeholder="List meetings, projects, and completed tasks..." /><small>Put each project on its own line, for example: SSCC, then sscc-api, then sscc-web.</small></label>
+            <div className="overtime-toggle"><label className="checkbox-label"><input type="checkbox" checked={report.overtimeEnabled} onChange={(event) => update("overtimeEnabled", event.target.checked)} /> Include overtime</label><span className="optional">optional</span></div>
+            {report.overtimeEnabled ? <div className="overtime-grid"><label>Time range<input type="text" value={report.overtimeTime} onChange={(event) => update("overtimeTime", event.target.value)} placeholder="6:00pm - 9:00pm" /></label><label>Work completed<textarea value={report.overtime} onChange={(event) => update("overtime", event.target.value)} rows={3} placeholder="Leave blank if none" /></label></div> : null}
+            <label>Blockers <span className="required" aria-hidden="true">*</span><textarea value={report.blockers} onChange={(event) => update("blockers", event.target.value)} rows={6} placeholder="None. Or include category, solution, expected date, and status." /><small>Keep a blocker here until the day it is resolved, marked Internal or External.</small></label>
+            <label>Notes <span className="required" aria-hidden="true">*</span><textarea value={report.notes} onChange={(event) => update("notes", event.target.value)} rows={4} placeholder="Important updates, leave, or management attention..." /></label>
+            <label>Next day tasks <span className="required" aria-hidden="true">*</span><textarea value={report.nextTasks} onChange={(event) => update("nextTasks", event.target.value)} rows={6} placeholder="What will you work on next?" /></label>
+
+            <section className="email-group" aria-labelledby="email-title">
+              <div className="email-heading"><h3 id="email-title">Send by email</h3>{gmail ? <span className="account">Sending as <strong>{gmail}</strong><button className="button button-small" onClick={signOut}>Sign out</button></span> : <a className="button button-dark" href="/api/auth/google">Sign in with Gmail</a>}</div>
+              {!gmail ? <p className={loginError ? "note note-error" : "note"} role={loginError ? "alert" : undefined}>{loginError || "Sign in once so reports go out from your own Gmail account."}</p> : null}
+              <div className="mail-grid"><label>To <span className="required" aria-hidden="true">*</span><input type="text" value={report.to} onChange={(event) => update("to", event.target.value)} placeholder="name@cyberland.edu.sg, ..." /></label><label>Cc<span className="optional">optional</span><input type="text" value={report.cc} onChange={(event) => update("cc", event.target.value)} placeholder="Separate with commas" /></label></div>
+              <div className="mail-grid"><label>Signature name<input type="text" value={report.signatureName} onChange={(event) => update("signatureName", event.target.value)} placeholder={gmailName || "Your name"} /></label><label>Signature title<input type="text" value={report.signatureTitle} onChange={(event) => update("signatureTitle", event.target.value)} placeholder="Software Engineer" /></label></div>
+              <label>Activity log<span className="optional">{logName ?? "not imported"}</span><input type="file" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) importLog(file); }} /><small>Saving or sending fills the report date into A4:D22. A new date pushes older days to the right. {logName ? <a href="/api/activity-log?download">Download the current file</a> : "Until you import one, emails go out with no attachment."}</small></label>
+              <label>Schedule send<span className="optional">optional</span><input type="datetime-local" value={report.sendAt} onChange={(event) => update("sendAt", event.target.value)} /></label>
+              {gmail ? <div className="jobs">{jobs === null ? <p className="note">Loading scheduled emails...</p> : jobs.length ? jobs.map((job) => <p className={job.error ? "note note-error" : "note"} key={job.id}><span>{job.error ? `Failed: ${job.error}` : `Scheduled ${new Date(job.sendAt).toLocaleString()} to ${job.to}`}</span><button className="button button-small" onClick={() => cancelJob(job.id)}>{job.error ? "Dismiss" : "Cancel"}</button></p>) : <p className="note">No scheduled emails.</p>}</div> : null}
+            </section>
+
+            <div className="form-footer"><p className={status.error ? "status status-error" : "status"} role="status">{status.text || `${reportText.split(/\s+/).filter(Boolean).length} words`}</p><div className="footer-actions"><button className="button" onClick={copy}>{copied ? "Copied" : "Copy report"}</button><button className="button" onClick={() => send(true)} disabled={busy || !report.sendAt || !gmail}>Schedule send</button><button className="button button-accent" onClick={() => send(false)} disabled={busy || !gmail}>{busy ? "Sending..." : "Send now"}</button></div></div>
+          </section>
+
+          <aside className="preview-panel" aria-labelledby="preview-title">
+            <h2 id="preview-title">Ready to send</h2>
+            <article className="paper"><div className="paper-content"><div className="paper-email" dangerouslySetInnerHTML={{ __html: classificationHtml }} /><p>{report.greeting}</p><ReportSection title="Accomplished" value={report.accomplishments} />{report.overtimeEnabled ? <ReportSection title={`Accomplished - OT [${report.overtimeTime}]`} value={report.overtime || "None"} /> : null}<ReportSection title="Blockers" value={report.blockers} /><ReportSection title="Notes" value={report.notes} /><ReportSection title="Next Day Tasks" value={report.nextTasks} /><p className="closing">Thank you!</p><div className="paper-email" dangerouslySetInnerHTML={{ __html: signatureHtml(report.signatureName || gmailName || "Your name", report.signatureTitle, "/signature-logos.png") }} /></div></article>
+            <ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} />
+          </aside>
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -198,7 +223,7 @@ function persistReport(report: Report) {
 }
 
 function ReportSection({ title, value, muted = false }: { title: string; value: string; muted?: boolean }) {
-  return <section className={`paper-section ${muted ? "muted" : ""}`}><h4>{title}</h4><PreviewNodes nodes={buildReportNodes(title, value)} isOvertime={title.startsWith("Accomplished - OT")} /></section>;
+  return <section className={`paper-section ${muted ? "muted" : ""}`}><h3>{title}</h3><PreviewNodes nodes={buildReportNodes(title, value)} isOvertime={title.startsWith("Accomplished - OT")} /></section>;
 }
 
 function PreviewNodes({ nodes, isOvertime, parentLevel = 0 }: { nodes: ReportNode[]; isOvertime: boolean; parentLevel?: number }) {
@@ -210,7 +235,7 @@ function PreviewNodes({ nodes, isOvertime, parentLevel = 0 }: { nodes: ReportNod
 
 function ActivityLog({ rows, date, copied, onCopy }: { rows: ActivityRow[]; date: string; copied: boolean; onCopy: () => void }) {
   const totalHours = rows.reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
-  return <section className="activity-card"><div className="activity-heading"><div><p className="eyebrow">DAILY ACTIVITY LOG</p><h3>Excel-ready rows</h3></div><button className="button button-ghost" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div><p className="activity-note">Projects are grouped like your Excel log. The date appears once as the column header; meetings use 0.5 hours.</p><div className="activity-table"><div className="activity-row activity-header"><span>Project</span><span>Task</span><span>{formatShortDate(date)}</span></div>{rows.slice(0, 8).map((row, index) => <div className="activity-row" key={`${row.task}-${index}`}><span>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</span><span>{row.task}</span><span>{row.hours}</span></div>)}</div><small className="activity-total">Generated task total: {totalHours} hrs</small>{rows.length > 8 ? <small className="activity-more">+ {rows.length - 8} more rows included when copied</small> : null}</section>;
+  return <section className="activity-card" aria-labelledby="activity-title"><div className="activity-heading"><h3 id="activity-title">Activity log rows</h3><button className="button button-small" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div><p className="activity-note">Grouped by project like your Excel log. Meetings count as 0.5 hours.</p>{rows.length ? <table className="activity-table"><thead><tr><th scope="col">Project</th><th scope="col">Task</th><th scope="col">{formatShortDate(date)}</th></tr></thead><tbody>{rows.slice(0, 8).map((row, index) => <tr key={`${row.task}-${index}`}><td>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</td><td>{row.task}</td><td>{row.hours}</td></tr>)}</tbody></table> : <p className="note">Add tasks under Accomplished to fill the log.</p>}<p className="activity-total">Total: {totalHours} hours{rows.length > 8 ? `, plus ${rows.length - 8} more rows when copied` : ""}</p></section>;
 }
 
 function buildActivityRows(value: string, totalHours?: number): ActivityRow[] {
