@@ -1,0 +1,8 @@
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+
+export const signatureHtml = (name: string, title: string, logoSrc: string) => `<div style="font-family:Arial,sans-serif;font-size:14px;color:#000;margin-top:24px">Best Regards,<br>${escapeHtml(name)}<br>${escapeHtml(title)}</div>
+<img src="${logoSrc}" alt="Cyberland Consultancy Pte Ltd | ISO 27001 | SME500 Singapore" width="196" height="42" style="display:block;margin:6px 0">
+<p style="font-family:'Times New Roman',serif;font-size:11px;color:#000;margin:6px 0"><span style="color:#ff0000">CAUTION:</span> This email may have originated from outside your organisation. Do not click on links or attachments unless you recognise the sender and know that the content is safe.</p>
+<p style="font-family:'Times New Roman',serif;font-size:11px;color:#0000ff;line-height:2;margin:0"><span style="color:#ff0000">DISCLAIMER:</span> The information transmitted by this email is intended only for the person or entity to which it is addressed. This email may contain proprietary, business-confidential and/or privileged material. If you are not the intended recipient of this message, be aware that any use, review, retransmission, distribution, reproduction or any action taken in reliance upon this message is strictly prohibited and may be an offence under the Official Secrets Act. If you received this in error, please contact the sender and delete the material from all computers.</p>`;
+
+export const classificationHtml = `<p style="font-family:Arial,sans-serif;font-size:14px;color:#000;text-align:center;margin:0 0 24px">Cyberland Classification: <span style="color:#ff0000">INTERNAL USE</span></p>`;

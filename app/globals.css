@@ -66,6 +66,8 @@ small { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; li
 .paper-list .paper-list { margin-top: 4px; margin-bottom: 3px; padding-left: 18px; }
 .paper-section.muted { opacity: .45; }
 .closing { margin-top: 27px; }
+.paper-email { zoom: .72; }
+.login-error { color: #b42318; }
 .send-hint { display: flex; align-items: center; width: 100%; gap: 12px; padding: 14px 0 0; border: 0; border-top: 1px solid #d6ded7; color: var(--ink); background: transparent; text-align: left; }
 .send-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--green); background: var(--mint); }
 .send-hint strong, .send-hint small { display: block; margin: 0; }

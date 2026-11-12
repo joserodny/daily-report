@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: (error as Error).message }, { status: 500 });
   }
 
-  if (url.searchParams.has("error")) return NextResponse.redirect(home);
+  const fail = (message: string) => {
+    home.searchParams.set("login_error", message);
+    return NextResponse.redirect(home);
+  };
+  if (url.searchParams.has("error")) return fail(`Google sign-in cancelled (${url.searchParams.get("error")}).`);
   const code = url.searchParams.get("code");
   if (!code) {
     const state = randomUUID();
@@ -34,13 +38,20 @@ export async function GET(request: NextRequest) {
     return response;
   }
 
-  if (!url.searchParams.get("state") || url.searchParams.get("state") !== request.cookies.get(stateCookie)?.value) return Response.json({ error: "Login expired, try again." }, { status: 400 });
+  if (!url.searchParams.get("state") || url.searchParams.get("state") !== request.cookies.get(stateCookie)?.value) return fail("Login expired, sign in again.");
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", { method: "POST", body: new URLSearchParams({ code, client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }) });
   const tokens = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokens.refresh_token) return Response.json({ error: `Gmail login failed: ${tokens.error_description ?? tokens.error ?? "no refresh token"}` }, { status: 400 });
+  if (!tokenResponse.ok || !tokens.refresh_token) {
+    const hints: Record<string, string> = {
+      redirect_uri_mismatch: `Google has not activated the redirect URI ${redirectUri} yet. Check it in Google Console and wait a few minutes.`,
+      invalid_grant: "Google login code expired or was already used. Sign in again.",
+      invalid_client: "GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is wrong in Vercel settings.",
+    };
+    return fail(`Gmail login failed (${tokens.error ?? "no refresh token"}): ${hints[tokens.error] ?? tokens.error_description ?? "try again."}`);
+  }
   const profile = await (await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${tokens.access_token}` } })).json();
   const email = String(profile.email ?? "").toLowerCase();
-  if (!profile.email_verified || !isAllowedEmail(email)) return Response.json({ error: `${email} is not allowed to use this app.` }, { status: 403 });
+  if (!profile.email_verified || !isAllowedEmail(email)) return fail(`${email} is not allowed to use this app.`);
   await saveGoogleAccount({ email, name: profile.name ?? email, refreshToken: tokens.refresh_token });
   const response = NextResponse.redirect(home);
   const session = createSession(email);

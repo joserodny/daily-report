@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { classificationHtml, signatureHtml } from "./lib/signature.ts";
 
 type Report = {
   date: string;
@@ -61,6 +62,7 @@ export default function Home() {
   const [jobs, setJobs] = useState<MailJob[]>([]);
   const [gmail, setGmail] = useState<string | null>(null);
   const [gmailName, setGmailName] = useState("");
+  const [loginError, setLoginError] = useState("");
 
   const loadJobs = () => fetch("/api/send").then((response) => response.json()).then((result) => setJobs(Array.isArray(result) ? result : []));
 
@@ -68,6 +70,11 @@ export default function Home() {
     const stored = window.localStorage.getItem("daily-report");
     if (stored) setReport({ ...emptyReport, ...JSON.parse(stored), date: getLocalDate() });
     else setReport((current) => ({ ...current, date: getLocalDate() }));
+    const error = new URLSearchParams(window.location.search).get("login_error");
+    if (error) {
+      setLoginError(error);
+      window.history.replaceState(null, "", "/");
+    }
     fetch("/api/activity-log").then((response) => response.json()).then((log) => setLogName(log.name ?? null));
     fetch("/api/auth").then((response) => response.json()).then((account) => {
       setGmail(account.email);
@@ -171,6 +178,7 @@ export default function Home() {
           <label>Notes <span className="required">*</span><textarea value={report.notes} onChange={(event) => update("notes", event.target.value)} rows={4} placeholder="Important updates, leave, or management attention..." /></label>
           <label>Next day tasks <span className="required">*</span><textarea value={report.nextTasks} onChange={(event) => update("nextTasks", event.target.value)} rows={6} placeholder="What will you work on next?" /></label>
           <div className="section-label overtime-toggle"><p className="eyebrow">EMAIL</p>{gmail ? <span className="optional">Sending as {gmail} <button className="button button-ghost" onClick={signOut}>Sign out</button></span> : <a className="button button-dark" href="/api/auth/google">Sign in with Gmail</a>}</div>
+          {loginError && !gmail ? <p className="disabled-note login-error">{loginError}</p> : null}
           <div className="mail-grid"><label>To <span className="required">*</span><input type="text" value={report.to} onChange={(event) => update("to", event.target.value)} placeholder="name@cyberland.edu.sg, ..." /></label><label>Cc<span className="optional">Optional</span><input type="text" value={report.cc} onChange={(event) => update("cc", event.target.value)} placeholder="Separate with commas" /></label></div>
           <div className="mail-grid"><label>Signature name<input type="text" value={report.signatureName} onChange={(event) => update("signatureName", event.target.value)} placeholder={gmailName || "Your name"} /></label><label>Signature title<input type="text" value={report.signatureTitle} onChange={(event) => update("signatureTitle", event.target.value)} placeholder="Software Engineer" /></label></div>
           <label>Activity log<span className="optional">{logName ?? "Not imported"}</span><input type="file" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) importLog(file); }} /><small>Save or send updates the block for the report date. A new date is inserted at A4:D22 (older days shift right). The file is attached to every send. {logName ? <a href="/api/activity-log?download">Download current</a> : "Without an import, the email is sent with no attachment."}</small></label>
@@ -179,7 +187,7 @@ export default function Home() {
           <div className="form-footer"><span className="word-count">{mailStatus || `${reportText.split(/\s+/).filter(Boolean).length} words`}</span><div><button className="button button-ghost" onClick={copy}>{copied ? "Copied" : "Copy report"}</button><button className="button button-dark" onClick={save}>{saved ? "Saved" : "Save report"}</button><button className="button button-ghost" onClick={() => send(true)} disabled={!report.sendAt || !gmail}>Schedule send</button><button className="button button-dark" onClick={() => send(false)} disabled={!gmail}>Send now</button></div></div>
         </section>
 
-        <aside className="preview-panel"><div className="preview-heading"><div><p className="eyebrow">LIVE PREVIEW</p><h2>Ready to send</h2></div><span className="preview-pill">A4</span></div><article className="paper"><h3>{subject}</h3><div className="paper-content"><p>{report.greeting}</p><ReportSection title="Accomplished" value={report.accomplishments} />{report.overtimeEnabled ? <ReportSection title={`Accomplished - OT [${report.overtimeTime}]`} value={report.overtime || "None"} /> : null}<ReportSection title="Blockers" value={report.blockers} /><ReportSection title="Notes" value={report.notes} /><ReportSection title="Next Day Tasks" value={report.nextTasks} /><p className="closing">Thank you!</p></div></article><button className="send-hint" onClick={copy}><span className="send-icon">↗</span><span><strong>Copy a polished version</strong><small>Paste it into email or your team chat</small></span><span className="arrow">→</span></button><ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} /></aside>
+        <aside className="preview-panel"><div className="preview-heading"><div><p className="eyebrow">LIVE PREVIEW</p><h2>Ready to send</h2></div><span className="preview-pill">A4</span></div><article className="paper"><h3>{subject}</h3><div className="paper-content"><div className="paper-email" dangerouslySetInnerHTML={{ __html: classificationHtml }} /><p>{report.greeting}</p><ReportSection title="Accomplished" value={report.accomplishments} />{report.overtimeEnabled ? <ReportSection title={`Accomplished - OT [${report.overtimeTime}]`} value={report.overtime || "None"} /> : null}<ReportSection title="Blockers" value={report.blockers} /><ReportSection title="Notes" value={report.notes} /><ReportSection title="Next Day Tasks" value={report.nextTasks} /><p className="closing">Thank you!</p><div className="paper-email" dangerouslySetInnerHTML={{ __html: signatureHtml(report.signatureName || gmailName || "Your name", report.signatureTitle, "/signature-logos.png") }} /></div></article><button className="send-hint" onClick={copy}><span className="send-icon">↗</span><span><strong>Copy a polished version</strong><small>Paste it into email or your team chat</small></span><span className="arrow">→</span></button><ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} /></aside>
       </div>
     </main>
   );
