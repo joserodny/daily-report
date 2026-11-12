@@ -40,7 +40,7 @@ const emptyReport: Report = {
   nextTasks: "",
   to: "",
   cc: "",
-  sendAt: "",
+  sendAt: `${getLocalDate()}T18:00`,
   signatureName: "",
   signatureTitle: "Software Engineer",
 };
@@ -68,8 +68,8 @@ export default function Home() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("daily-report");
-    if (stored) setReport({ ...emptyReport, ...JSON.parse(stored), date: getLocalDate() });
-    else setReport((current) => ({ ...current, date: getLocalDate() }));
+    if (stored) setReport({ ...emptyReport, ...JSON.parse(stored), date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` });
+    else setReport((current) => ({ ...current, date: getLocalDate(), sendAt: `${getLocalDate()}T18:00` }));
     const error = new URLSearchParams(window.location.search).get("login_error");
     if (error) {
       setLoginError(error);
@@ -84,7 +84,7 @@ export default function Home() {
   }, []);
 
   const subject = useMemo(() => `Daily Report for ${formatDate(report.date)}`, [report.date]);
-  const update = (key: keyof Report, value: string | boolean) => setReport((current) => ({ ...current, [key]: value }));
+  const update = (key: keyof Report, value: string | boolean) => setReport((current) => ({ ...current, [key]: value, ...(key === "date" && { sendAt: `${value}T18:00` }) }));
   const reportText = buildReportText(report, subject);
   const reportHtml = buildReportHtml(report, subject);
   const activityRows = useMemo(() => {
