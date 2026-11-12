@@ -89,10 +89,13 @@ h3 { margin: 0; font-size: 17px; }
 .activity-card { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
 .activity-note { margin: 8px 0 12px; color: var(--muted); font-size: 13px; }
 .activity-table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid var(--line); background: #fff; font-size: 12px; }
-.activity-table th, .activity-table td { padding: 8px; border-top: 1px solid var(--line); overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.activity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.activity-table th, .activity-table td { padding: 6px 8px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.activity-table td:last-child { padding: 3px 4px; }
 .activity-table th { color: var(--green); background: var(--mint); font-weight: 600; }
-.activity-table th:first-child { width: 28%; }
-.activity-table th:last-child { width: 86px; }
+.activity-table th:first-child { width: 26%; }
+.activity-table th:last-child { width: 96px; }
+.hours-input { min-height: 44px; margin: 0; padding: 6px 8px; font-size: 13px; text-align: right; }
 .activity-total { margin: 10px 0 0; color: var(--green); font-size: 13px; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

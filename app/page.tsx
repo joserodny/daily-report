@@ -18,6 +18,7 @@ type Report = {
   sendAt: string;
   signatureName: string;
   signatureTitle: string;
+  hours: Record<string, string>;
 };
 
 type ActivityRow = { project: string; task: string; hours: string };
@@ -46,6 +47,7 @@ const emptyReport: Report = {
   sendAt: `${getLocalDate()}T18:00`,
   signatureName: "",
   signatureTitle: "Software Engineer",
+  hours: {},
 };
 
 const formatDate = (date: string) =>
@@ -101,8 +103,11 @@ export default function Home() {
   const reportHtml = buildReportHtml(report, subject);
   const activityRows = useMemo(() => {
     const regularRows = buildActivityRows(report.accomplishments, 8);
-    return report.overtimeEnabled ? [...regularRows, ...buildActivityRows(report.overtime)] : regularRows;
-  }, [report.accomplishments, report.overtime, report.overtimeEnabled]);
+    const rows = report.overtimeEnabled ? [...regularRows, ...buildActivityRows(report.overtime)] : regularRows;
+    return rows.map((row) => ({ ...row, hours: report.hours[activityKey(row)] ?? row.hours }));
+  }, [report.accomplishments, report.overtime, report.overtimeEnabled, report.hours]);
+  const setHours = (key: string, value: string) => setReport((current) => ({ ...current, hours: { ...current.hours, [key]: value } }));
+  const resetHours = () => setReport((current) => ({ ...current, hours: {} }));
   const activityText = buildActivityText(activityRows, report.date);
 
   const save = async () => {
@@ -219,7 +224,7 @@ export default function Home() {
           <aside className="preview-panel" aria-labelledby="preview-title">
             <h2 id="preview-title">Ready to send</h2>
             <article className="paper"><div className="paper-content"><div className="paper-email" dangerouslySetInnerHTML={{ __html: classificationHtml }} /><p>{report.greeting}</p><ReportSection title="Accomplished" value={report.accomplishments} />{report.overtimeEnabled ? <ReportSection title={`Accomplished - OT [${report.overtimeTime}]`} value={report.overtime || "None"} /> : null}<ReportSection title="Blockers" value={report.blockers} /><ReportSection title="Notes" value={report.notes} /><ReportSection title="Next Day Tasks" value={report.nextTasks} /><p className="closing">Thank you!</p><div className="paper-email" dangerouslySetInnerHTML={{ __html: signatureHtml(report.signatureName || gmailName || "Your name", report.signatureTitle, "/signature-logos.png") }} /></div></article>
-            <ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} />
+            <ActivityLog rows={activityRows} date={report.date} copied={activityCopied} onCopy={copyActivityLog} edited={activityRows.some((row) => activityKey(row) in report.hours)} onHoursChange={setHours} onReset={resetHours} />
           </aside>
         </div>
       </main>
@@ -242,9 +247,15 @@ function PreviewNodes({ nodes, isOvertime, parentLevel = 0 }: { nodes: ReportNod
   return <List {...(type ? { type } : {})} className="paper-list">{nodes.map((node, index) => <li className={isReportHeading(node.text) ? "paper-list-heading" : ""} key={`${node.text}-${index}`}>{node.text}{node.children.length ? <PreviewNodes nodes={node.children} isOvertime={isOvertime} parentLevel={node.level + 1} /> : null}</li>)}</List>;
 }
 
-function ActivityLog({ rows, date, copied, onCopy }: { rows: ActivityRow[]; date: string; copied: boolean; onCopy: () => void }) {
+const maxActivityRows = 17;
+
+function activityKey(row: ActivityRow) {
+  return `${row.project}|${row.task}`;
+}
+
+function ActivityLog({ rows, date, copied, onCopy, edited, onHoursChange, onReset }: { rows: ActivityRow[]; date: string; copied: boolean; onCopy: () => void; edited: boolean; onHoursChange: (key: string, value: string) => void; onReset: () => void }) {
   const totalHours = rows.reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
-  return <section className="activity-card" aria-labelledby="activity-title"><div className="activity-heading"><h3 id="activity-title">Activity log rows</h3><button className="button button-small" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div><p className="activity-note">Grouped by project like your Excel log. Meetings count as 0.5 hours.</p>{rows.length ? <table className="activity-table"><thead><tr><th scope="col">Project</th><th scope="col">Task</th><th scope="col">{formatShortDate(date)}</th></tr></thead><tbody>{rows.slice(0, 8).map((row, index) => <tr key={`${row.task}-${index}`}><td>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</td><td>{row.task}</td><td>{row.hours}</td></tr>)}</tbody></table> : <p className="note">Add tasks under Accomplished to fill the log.</p>}<p className="activity-total">Total: {totalHours} hours{rows.length > 8 ? `, plus ${rows.length - 8} more rows when copied` : ""}</p></section>;
+  return <section className="activity-card" aria-labelledby="activity-title"><div className="activity-heading"><h3 id="activity-title">Activity log rows</h3><div className="activity-actions">{edited ? <button className="button button-small" onClick={onReset}>Reset hours</button> : null}<button className="button button-small" onClick={onCopy}>{copied ? "Copied" : "Copy for Excel"}</button></div></div><p className="activity-note">Grouped by project like your Excel log. Hours are filled in automatically; change any of them here.</p>{rows.length ? <table className="activity-table"><thead><tr><th scope="col">Project</th><th scope="col">Task</th><th scope="col">{formatShortDate(date)}</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${activityKey(row)}-${index}`}><td>{index === 0 || rows[index - 1].project !== row.project ? row.project : ""}</td><td>{row.task}</td><td><input className="hours-input" type="number" inputMode="decimal" min="0" max="24" step="0.25" value={row.hours} onChange={(event) => onHoursChange(activityKey(row), event.target.value)} aria-label={`Hours for ${row.task}`} /></td></tr>)}</tbody></table> : <p className="note">Add tasks under Accomplished to fill the log.</p>}<p className="activity-total">Total: {totalHours} hours</p>{rows.length > maxActivityRows ? <p className="note note-error" role="alert">The Excel block A4:D22 fits {maxActivityRows} tasks; this report has {rows.length}. Combine some tasks before sending.</p> : null}</section>;
 }
 
 function buildActivityRows(value: string, totalHours?: number): ActivityRow[] {
